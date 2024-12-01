@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMDB</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        #loader {
+            display: none;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        #progress {
+            width: 100%;
+            background-color: #f3f3f3;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #4caf50;
+            text-align: center;
+            color: white;
+            line-height: 20px;
+        }
+
+        #result {
+            margin-top: 20px;
+            background: #f8f9fa;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f4f4f4;
+        }
+
+        .pagination {
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+        }
+
+        .sorting-buttons {
+            margin-top: 20px;
+        }
+
+        .sorting-buttons button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>File Upload</h1>
+    <form id="uploadForm">
+        <input type="file" id="fileInput" name="file" required />
+        <button type="submit" id="uploadButton">Upload</button>
+    </form>
+
+    <div id="loader">Uploading... Please wait</div>
+
+    <div id="progress">
+        <div id="progress-bar">0%</div>
+    </div>
+
+    <div id="result"></div>
+
+    <!-- Sorting buttons -->
+    <div class="sorting-buttons">
+        <button id="sortByDateAdded">Sort by Date Added ↑↓</button>
+        <button id="sortByReleaseYear">Sort by Release Year  ↑↓</button>
+        <button id="sortByDuration">Sort by Duration  ↑↓</button>
+    </div>
+
+    <div class="pagination">
+        <button id="prevButton" disabled>Previous</button>
+        <button id="nextButton" disabled>Next</button>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let sortField = 'date_added'; // Default sorting field
+        let sortOrder = 'asc'; // Default sorting order
+        const resultDiv = document.getElementById('result');
+
+        document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent form from submitting normally
+
+            const fileInput = document.getElementById('fileInput');
+            const loader = document.getElementById('loader');
+            const progressBar = document.getElementById('progress-bar');
+            const token = localStorage.getItem('token'); // Retrieve token from localStorage
+
+            if (!fileInput.files.length) {
+                alert('Please select a file to upload.');
+                return;
+            }
+
+            loader.style.display = 'block';
+            resultDiv.innerHTML = ''; // Clear previous results
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // Step 1: Upload file
+                console.log(token)
+                const uploadResponse = await fetch('http://127.0.0.1:5000/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error('File upload failed');
+                }
+
+                const uploadData = await uploadResponse.json();
+                const fileId = uploadData.file_id;
+
+                // Step 2: Track progress
+                const trackProgress = async () => {
+                    const progressResponse = await fetch(`http://127.0.0.1:5000/progress/${fileId}`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    const progressData = await progressResponse.json();
+                    const progress = progressData.progress;
+
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.textContent = `${progress}%`;
+
+                    if (progress < 100) {
+    
+                        setTimeout(trackProgress, 1000); // Poll every second
+                    } else {
+                        loader.style.display = 'none';
+                        fetchMoviesData();
+                    }
+                };
+
+                trackProgress();
+            } catch (error) {
+                console.error('Error:', error);
+                loader.style.display = 'none';
+                resultDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        });
+
+        async function fetchMovies() {
+            const token = localStorage.getItem('token'); // Retrieve token from localStorage
+            const url = new URL('http://127.0.0.1:5000/movies');
+            url.searchParams.set('page', currentPage);
+            url.searchParams.set('per_page', 10);
+            url.searchParams.set('sort_by', sortField);
+            url.searchParams.set('order', sortOrder);
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            return response;
+        }
+
+        function renderTable(data, container) {
+            if (!Array.isArray(data)) {
+                container.innerHTML = '<p>Invalid data format</p>';
+                console.log('Data format error:', data);
+                return;
+            }
+
+            container.innerHTML = '';
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const tbody = document.createElement('tbody');
+
+            const headers = Object.keys(data[0]);
+            const headerRow = document.createElement('tr');
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.textContent = row[header];
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            table.appendChild(thead);
+            table.appendChild(tbody);
+            container.appendChild(table);
+        }
+
+        function updatePaginationButtons() {
+            const prevButton = document.getElementById('prevButton');
+            const nextButton = document.getElementById('nextButton');
+
+            prevButton.disabled = currentPage === 1;
+            nextButton.disabled = currentPage === totalPages;
+        }
+
+        function handlePagination(direction) {
+            if (direction === 'prev' && currentPage > 1) {
+                currentPage--;
+            } else if (direction === 'next' && currentPage < totalPages) {
+                currentPage++;
+            }
+            fetchMoviesData();
+        }
+
+        document.getElementById('prevButton').addEventListener('click', () => handlePagination('prev'));
+        document.getElementById('nextButton').addEventListener('click', () => handlePagination('next'));
+
+        document.getElementById('sortByDateAdded').addEventListener('click', () => {
+            sortField = 'date_added';
+            sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+            fetchMoviesData();
+        });
+
+        document.getElementById('sortByReleaseYear').addEventListener('click', () => {
+            sortField = 'release_year';
+            sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+            fetchMoviesData();
+        });
+
+        document.getElementById('sortByDuration').addEventListener('click', () => {
+            sortField = 'duration';
+            sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+            fetchMoviesData();
+        });
+
+        async function fetchMoviesData() {
+            try {
+                const movieResponse = await fetchMovies();
+                const movieData = await movieResponse.json();
+
+                console.log('Movie Data:', movieData); // Log the response to inspect the format
+
+                if (!Array.isArray(movieData.movies)) {
+                    console.log('Error: Expected movies to be an array, but received:', movieData.movies);
+                    resultDiv.innerHTML = '<p>Invalid data format</p>';
+                    return;
+                }
+
+                totalPages = movieData.pagination.total_pages;
+
+                renderTable(movieData.movies, resultDiv);  // Render movies from the "movies" key
+                updatePaginationButtons();
+            } catch (error) {
+                console.error('Error fetching movie data:', error);
+                resultDiv.innerHTML = '<p>Error fetching movie data</p>';
+            }
+        }
+    </script>
+</body>
+</html>
