@@ -3,7 +3,6 @@ from flask_bcrypt import Bcrypt
 import sys
 sys.path.append("..")
 import os
-import time
 import pika
 import uuid
 from dotenv import load_dotenv
@@ -21,8 +20,9 @@ CORS(app)
 
 
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
-app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 16 * 1024 * 1024))  # Default 16MB
 app.config['ALLOWED_EXTENSIONS'] = {'csv', 'xlsx'}
+
+max_content_length = int(os.getenv('MAX_CONTENT_LENGTH', 10 * 1024 * 1024 * 1024))  # Default 10 GB
 
 
 redis_conn = redis_configuration.get_redis_connection()
@@ -110,6 +110,11 @@ def upload_file():
     decoded_token = helper.decode_token(token, app.config['SECRET_KEY'])
     if not decoded_token:
         return jsonify({'message': 'Invalid or expired token!'}), 403
+    
+    user_id = decoded_token['user_id']
+    username = redis_conn.get(f"user:{user_id}")
+    if not username:
+        return jsonify({'message': 'Session expired, please log in again.'}), 401
 
    
     if 'file' not in request.files:
@@ -121,6 +126,12 @@ def upload_file():
 
     if not helper.allowed_file(file.filename,app.config['ALLOWED_EXTENSIONS']):
         return jsonify({'message': 'Invalid file format. Only CSV and XLSX files are allowed.'}), 400
+    
+    file.seek(0, os.SEEK_END)  
+    file_size = file.tell()   
+    
+    if file_size > max_content_length:
+        return jsonify({'message': f'File size exceeds the maximum allowed limit of 10GB ({max_content_length / (1024 * 1024 * 1024)}GB).'}), 400
 
    
     file_id = str(uuid.uuid4())
@@ -146,6 +157,11 @@ def check_progress(file_id):
     if not decoded_token:
         return jsonify({'message': 'Invalid or expired token!'}), 403
     
+    user_id = decoded_token['user_id']
+    username = redis_conn.get(f"user:{user_id}")
+    if not username:
+        return jsonify({'message': 'Session expired, please log in again.'}), 401
+    
     progress = redis_conn.get(f'progress_{file_id}')
     if not progress:
         return jsonify({'error': 'File not being processed'}), 404
@@ -163,6 +179,11 @@ def list_movies():
     decoded_token = helper.decode_token(token, app.config['SECRET_KEY'])
     if not decoded_token:
         return jsonify({'message': 'Invalid or expired token!'}), 403
+    
+    user_id = decoded_token['user_id']
+    username = redis_conn.get(f"user:{user_id}")
+    if not username:
+        return jsonify({'message': 'Session expired, please log in again.'}), 401
 
     
     try:
