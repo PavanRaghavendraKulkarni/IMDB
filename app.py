@@ -39,6 +39,40 @@ bcrypt = Bcrypt(app)
 
 @app.route('/register', methods=['POST'])
 def register():
+    """
+    Endpoint to register a new user.
+
+    **Purpose**:
+    - Allows a new user to create an account with a username and password.
+
+    **Process**:
+    1. Accepts a JSON payload containing `username` and `password`.
+    2. Validates that both fields are provided.
+    3. Checks if the username already exists in the database.
+    4. Hashes the password and stores the user in the database.
+    5. Generates a JWT token for the newly registered user.
+
+    **Request**:
+    - Method: POST
+    - Payload: 
+      {
+          "username": "example_user",
+          "password": "example_password"
+      }
+
+    **Response**:
+    - Success (201): 
+      {
+          "message": "User registered successfully!",
+          "token": "<JWT_token>"
+      }
+    - Error (400): Username and password missing or user already exists.
+
+    **Returns**:
+    - A success message with a token if registration is successful.
+    - An error message if the username already exists or validation fails.
+    """
+
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -60,6 +94,42 @@ def register():
 
 @app.route('/login', methods=['POST'])
 def login():
+    """
+    Endpoint to log in an existing user.
+
+    **Purpose**:
+    - Authenticates a user with a valid username and password.
+
+    **Process**:
+    1. Accepts a JSON payload containing `username` and `password`.
+    2. Validates the provided credentials against the database.
+    3. If credentials are valid:
+        - Stores the username in Redis with a 1-hour expiry.
+        - Generates a JWT token for the user.
+    4. If credentials are invalid:
+        - Returns an error response.
+
+    **Request**:
+    - Method: POST
+    - Payload: 
+      {
+          "username": "example_user",
+          "password": "example_password"
+      }
+
+    **Response**:
+    - Success (200): 
+      {
+          "message": "Login successful!",
+          "token": "<JWT_token>"
+      }
+    - Error (400/401): Invalid credentials or missing fields.
+
+    **Returns**:
+    - A success message with a token if login is successful.
+    - An error message if validation or authentication fails.
+    """
+
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -81,6 +151,33 @@ def login():
 
 @app.route('/welcome', methods=['GET'])
 def welcome():
+    """
+    Endpoint to display a welcome page for logged-in users.
+
+    **Purpose**:
+    - Verifies the user's JWT token and displays a personalized welcome page.
+
+    **Process**:
+    1. Checks for an `Authorization` header containing a valid JWT token.
+    2. Decodes the token to validate it.
+    3. Retrieves the user's session data from Redis.
+    4. If the token or session data is invalid, an error response is returned.
+    5. Renders a `welcome.html` page with the user's username.
+
+    **Request**:
+    - Method: GET
+    - Headers: 
+      Authorization: "Bearer <JWT_token>"
+
+    **Response**:
+    - Success (200): Rendered HTML page with a personalized message.
+    - Error (403/401): Token missing, invalid, or expired.
+
+    **Returns**:
+    - A rendered HTML welcome page if the user is authenticated.
+    - An error message if the token or session data is invalid.
+    """
+
     token = request.headers.get('Authorization')
     if not token:
         return jsonify({'message': 'Token is missing!'}), 403
@@ -101,7 +198,28 @@ def welcome():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-   
+    """
+    Endpoint to handle file uploads.
+
+    **Authorization**: Requires a valid token in the `Authorization` header.
+
+    Validates:
+    - Token validity.
+    - File presence in the request.
+    - File format (only CSV and XLSX allowed).
+    - File size (maximum of 10GB).
+
+    **Process**:
+    - Checks for an active user session using Redis.
+    - Queues the file for background processing via RabbitMQ.
+
+    Returns:
+        - 403: If token is missing or invalid.
+        - 401: If the user's session has expired.
+        - 400: If the file is missing, invalid, or exceeds the size limit.
+        - 202: If the file is successfully queued for processing.
+    """
+
     token = request.headers.get('Authorization')
     if not token:
         return jsonify({'message': 'Token is missing!'}), 403
@@ -148,6 +266,22 @@ def upload_file():
 
 @app.route('/progress/<file_id>', methods=['GET'])
 def check_progress(file_id):
+    """
+    Endpoint to fetch the progress of a file upload.
+
+    **Authorization**: Requires a valid token in the `Authorization` header.
+
+    **Process**:
+    - Retrieves the progress of the given file ID from Redis.
+
+    Args:
+        file_id (str): Unique ID of the uploaded file.
+
+    Returns:
+        - 403: If token is missing or invalid.
+        - 200: Progress status of the file upload.
+    """
+
     token = request.headers.get('Authorization')
     if not token:
         return jsonify({'message': 'Token is missing!'}), 403
@@ -171,6 +305,25 @@ def check_progress(file_id):
 
 @app.route('/movies', methods=['GET'])
 def list_movies():
+    """
+    Endpoint to fetch a paginated and sortable list of movies/shows.
+
+    **Authorization**: Requires a valid token in the `Authorization` header.
+
+    **Query Parameters**:
+    - `page` (int): Page number for pagination (default: 1).
+    - `limit` (int): Number of items per page (default: 10).
+    - `sort_by` (str): Field to sort by (e.g., 'date_added', 'release_year', 'duration').
+
+    **Process**:
+    - Fetches data from the database.
+    - Supports pagination and sorting.
+
+    Returns:
+        - 403: If token is missing or invalid.
+        - 200: Paginated list of movies/shows.
+    """
+
     token = request.headers.get('Authorization')
     if not token:
         return jsonify({'message': 'Token is missing!'}), 403
@@ -254,6 +407,19 @@ def list_movies():
 
 @app.route('/')
 def index():
+    """
+    Endpoint for the application's homepage.
+
+    **Purpose**:
+    - Serves the main HTML page of the application.
+
+    **Process**:
+    - Renders the `index.html` template.
+
+    Returns:
+        - HTML content for the homepage.
+    """
+    
     return render_template('index.html')
 
 

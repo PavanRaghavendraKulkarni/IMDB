@@ -28,6 +28,15 @@ except redis.ConnectionError as e:
 
 
 def get_redis_connection():
+    """
+    Retrieves the Redis connection object.
+
+    **Purpose**:
+    - Provides a centralized way to access the Redis connection instance, which is used for caching, session management, and other high-speed data storage tasks.
+
+    **Returns**:
+    - `Redis`: The Redis connection object.
+    """
     return redis_conn
 
 
