@@ -1,0 +1,30 @@
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+# Virtual environments
+venv/
+env/
+ENV/
+*.env
+
+# IDE/Editor folders
+.idea/
+.vscode/
+
+# macOS system files
+.DS_Store
+
+# Log files
+*.log
+
+# Flask / Django specific
+*.sqlite3
+*.db
+*.log
+
+# Environment variable files
+.env
